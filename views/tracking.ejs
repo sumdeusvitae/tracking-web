@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Driver Location Tracking</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <meta http-equiv="refresh" content="30" />
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center py-12">
+  <div class="max-w-4xl w-full mx-auto px-6">
+    <div class="text-center mb-12">
+      <h1 class="text-4xl font-extrabold text-gray-900">🚚 Driver Location Tracking</h1>
+      <p class="text-gray-600 mt-3 text-lg">Real-time driver location and status</p>
+    </div>
+
+    <% if (error) { %>
+      <div class="max-w-md mx-auto">
+        <div class="bg-red-50 border border-red-400 text-red-700 px-8 py-6 rounded-lg text-center shadow">
+          <h2 class="text-2xl font-semibold mb-3">Access Denied</h2>
+          <p class="text-base leading-relaxed"><%= error %></p>
+        </div>
+      </div>
+    <% } else if (driver) { %>
+      <div class="bg-white rounded-lg shadow-xl overflow-hidden max-w-md mx-auto">
+        <div class="bg-blue-600 text-white px-8 py-6 space-y-4">
+          <div>
+            <p class="uppercase tracking-wide text-sm font-semibold opacity-75">Driver Name</p>
+            <h2 class="text-3xl font-bold truncate"><%= driver.name %></h2>
+          </div>
+          <div>
+            <p class="uppercase tracking-wide text-sm font-semibold opacity-75">Current Location</p>
+            <h2 class="text-2xl font-semibold"><%= driver.location %></h2>
+          </div>
+          <div>
+            <p class="uppercase tracking-wide text-sm font-semibold opacity-75">Last Updated At</p>
+            <h2 class="text-lg font-medium"><%= formattedLastUpdated %></h2>
+          </div>
+          <!-- Add more driver details here -->
+        </div>
+      </div>
+    <% } else { %>
+      <p class="text-center text-gray-500 text-lg mt-12">No driver information available.</p>
+    <% } %>
+  </div>
+</body>
+</html>

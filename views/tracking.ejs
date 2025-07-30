@@ -25,7 +25,12 @@
         <div class="bg-blue-600 text-white px-8 py-6 space-y-4">
           <div>
             <p class="uppercase tracking-wide text-sm font-semibold opacity-75">Driver Name</p>
-            <h2 class="text-3xl font-bold truncate"><%= driver.name %></h2>
+            <% 
+            const nameParts = driver.name.trim().split(' ');
+            const firstName = nameParts[0];
+            const initials = nameParts.slice(1).map(n => n[0].toUpperCase()).join('');
+            %>
+<h2 class="text-3xl font-bold truncate"><%= firstName %> <%= initials %>.</h2>
           </div>
           <div>
             <p class="uppercase tracking-wide text-sm font-semibold opacity-75">Current Location</p>

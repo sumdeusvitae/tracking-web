@@ -172,14 +172,15 @@ app.get('/dashboard', requireAuth, async (req, res) => {
 app.post('/generate-link', requireAuth, async (req, res) => {
   const { driverName, expirationHours } = req.body;
   
+
   if (!driverName || !expirationHours) {
     return res.status(400).json({ error: 'Driver name and expiration time are required' });
   }
-  
+
   try {
     const drivers = await fetchDriversFromAPI();
     const selectedDriver = drivers.find(d => d.name === driverName);
-    
+
     if (!selectedDriver) {
       return res.status(404).json({ error: 'Driver not found' });
     }
@@ -187,41 +188,38 @@ app.post('/generate-link', requireAuth, async (req, res) => {
     // Check for existing active link
     const existingLinkId = driverToLinkId.get(driverName);
     if (existingLinkId) {
-      const existing = trackingLinks.get(existingLinkId);
-      if (existing && new Date() < existing.expiresAt) {
-        return res.status(400).json({ 
-          error: 'Tracking link already exists for this driver',
-          existingLink: `${req.protocol}://${req.get('host')}/track/${existingLinkId}`,
-          expiresAt: existing.expiresAt.toISOString()
-        });
-      } else {
-        // Clean up expired link
-        trackingLinks.delete(existingLinkId);
-        driverToLinkId.delete(driverName);
+      // Invalidate old link
+      const oldLink = trackingLinks.get(existingLinkId);
+      if (oldLink) {
+        oldLink.active = false;
       }
+
+      // Clean up driver→oldLink mapping
+      driverToLinkId.delete(driverName);
     }
 
-    const linkId = uuidv4();
-    const expirationTime = new Date(Date.now() + (parseInt(expirationHours) * 60 * 60 * 1000));
-    
-    // Store new link
-    trackingLinks.set(linkId, {
-      driverName: selectedDriver.name,
-      createdAt: new Date(),
-      expiresAt: expirationTime,
-      createdBy: req.session.user.username
-    });
-    driverToLinkId.set(driverName, linkId);
-    
+
+      const linkId = uuidv4();
+      const expirationTime = new Date(Date.now() + parseInt(expirationHours) * 60 * 60 * 1000);
+      trackingLinks.set(linkId, {
+        driverName,
+        createdAt: new Date(),
+        expiresAt: expirationTime,
+        createdBy: req.session.user.username,
+        active: true
+      });
+      driverToLinkId.set(driverName, linkId);
+
+
     const trackingUrl = `${req.protocol}://${req.get('host')}/track/${linkId}`;
-    
+
     res.json({
       success: true,
       trackingUrl: trackingUrl,
       expiresAt: expirationTime.toISOString(),
       driverName: selectedDriver.name
     });
-    
+
   } catch (error) {
     console.error('Error generating tracking link:', error);
     res.status(500).json({ error: 'Failed to generate tracking link' });
@@ -238,7 +236,11 @@ app.post('/cancel-link', requireAuth, (req, res) => {
     return res.status(404).json({ error: 'No active tracking link found for this driver' });
   }
 
-  trackingLinks.delete(linkId);
+  // Mark as inactive instead of deleting immediately
+  const link = trackingLinks.get(linkId);
+  link.active = false;
+
+  // Remove driver mapping so a new link can be generated
   driverToLinkId.delete(driverName);
 
   console.log(`Tracking link manually canceled for ${driverName}`);
@@ -247,45 +249,37 @@ app.post('/cancel-link', requireAuth, (req, res) => {
 
 
 
+
 // Public tracking page
-app.get('/track/:id', async (req, res) => {
-  const linkId = req.params.id;
-  const linkData = trackingLinks.get(linkId);
-  
-  if (!linkData) {
-    return res.render('tracking', { 
-      error: 'Invalid tracking link',
-      driver: null 
-    });
+app.get('/track/:linkId', async (req, res) => {
+  const { linkId } = req.params;
+  const link = trackingLinks.get(linkId);
+
+  // Reject if link is missing, inactive, or expired
+  if (!link || !link.active || new Date() > link.expiresAt) {
+    return res.status(403).send('This tracking link is no longer valid, please request new link');
   }
-  
-  // Check if link has expired
-  if (new Date() > linkData.expiresAt) {
-    return res.render('tracking', { 
-      error: 'This tracking link has expired',
-      driver: null 
-    });
-  }
-  
+
   try {
     const drivers = await fetchDriversFromAPI();
-    const driver = drivers.find(d => d.name === linkData.driverName);
-    const formattedLastUpdated = formatTimestampInCDT(driver.last_updated);
-    
+    const driver = drivers.find(d => d.name === link.driverName);
+
     if (!driver) {
       return res.render('tracking', { 
         error: 'Driver data not available',
         driver: null 
       });
     }
-    
+
+    const formattedLastUpdated = formatTimestampInCDT(driver.last_updated);
+
     res.render('tracking', { 
       error: null,
       driver: driver,
       formattedLastUpdated: formattedLastUpdated,
-      expiresAt: linkData.expiresAt
+      expiresAt: link.expiresAt
     });
-    
+
   } catch (error) {
     console.error('Error fetching driver data for tracking:', error);
     res.render('tracking', { 
@@ -294,6 +288,7 @@ app.get('/track/:id', async (req, res) => {
     });
   }
 });
+
 
 // API endpoint for refreshing tracking data
 app.get('/api/track/:id', async (req, res) => {
@@ -359,9 +354,6 @@ app.use((req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
-  console.log('Demo credentials:');
-  console.log('Username: admin, Password: password123');
-  console.log('Username: user1, Password: demo123');
 });
 
 // helper functions

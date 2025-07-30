@@ -3,19 +3,10 @@ const session = require('express-session');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
+const db = require('./firebase'); // Firestore
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-
-// In-memory storage for tracking links and sessions
-// In production, use Redis or a database
-const trackingLinks = new Map();
-const driverToLinkId = new Map(); // Map of driverName → linkId
-
-// const users = new Map([
-//   ['admin', { password: 'password123', name: 'Administrator' }],
-//   ['user1', { password: 'demo123', name: 'Demo User' }]
-// ]);
 
 // Middleware
 app.use(express.json());
@@ -25,91 +16,45 @@ app.use(session({
   secret: process.env.SESSION_SECRET || 'your-secret-key-here',
   resave: false,
   saveUninitialized: false,
-  cookie: { secure: false, maxAge: 24 * 60 * 60 * 1000 } // 24 hours
+  cookie: { secure: false, maxAge: 24 * 60 * 60 * 1000 }
 }));
 
-// Set EJS as template engine
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
-// Authentication middleware
 const requireAuth = (req, res, next) => {
-  if (req.session.user) {
-    next();
-  } else {
-    res.redirect('/login');
-  }
+  if (req.session.user) next();
+  else res.redirect('/login');
 };
 
-// Fetch drivers from your actual API
+// Fetch drivers from API
 async function fetchDriversFromAPI() {
   try {
-    console.log('Fetching drivers from API...');
-    
     const response = await fetch('https://server-eld-666563578864.us-south1.run.app/drivers', {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': 'Driver-Tracking-Server/1.0'
-      },
-      timeout: 10000 // 10 second timeout
+      headers: { 'Content-Type': 'application/json', 'User-Agent': 'Driver-Tracking-Server/1.0' },
+      timeout: 10000
     });
-    
-    if (!response.ok) {
-      throw new Error(`API responded with status: ${response.status} ${response.statusText}`);
-    }
-    
+
+    if (!response.ok) throw new Error(`API responded with ${response.status}`);
     const drivers = await response.json();
-    console.log(`Successfully fetched ${drivers.length} drivers from API`);
-    
-    // Validate the response format
-    if (!Array.isArray(drivers)) {
-      throw new Error('API response is not an array');
-    }
-    
-    // Validate each driver has required fields
-    drivers.forEach((driver, index) => {
-      const requiredFields = ['name', 'truck_id', 'location', 'status', 'last_updated'];
-      const missingFields = requiredFields.filter(field => !driver[field]);
-      
-      if (missingFields.length > 0) {
-        console.warn(`Driver ${index} missing fields: ${missingFields.join(', ')}`);
-      }
-    });
-    
+    if (!Array.isArray(drivers)) throw new Error('Invalid driver data format');
     return drivers;
-    
-  } catch (error) {
-    console.error('Error fetching drivers from API:', error.message);
-    
-    // Return mock data as fallback for development/testing
-    console.log('Falling back to mock data for development...');
+  } catch (err) {
+    console.error('Driver API failed, returning mock data...');
     return [
       {
-        "name": "Albert Davis (Demo)",
-        "status": "Off Duty",
-        "location": "2mi SSE from Tremonton, UT",
-        "truck_id": "507889",
-        "shift_start": "08:00",
-        "break_time": "09:14",
-        "drive_time": "03:32",
-        "cycle_time": "38:03",
-        "connection_status": "",
-        "reported_at": "08:54 AM CDT",
-        "last_updated": "2025-07-15T17:55:04.913055887Z"
-      },
-      {
-        "name": "Sarah Johnson (Demo)",
-        "status": "Driving",
-        "location": "Interstate 80, near Salt Lake City, UT",
-        "truck_id": "507890",
-        "shift_start": "06:00",
-        "break_time": "07:30",
-        "drive_time": "05:15",
-        "cycle_time": "42:30",
-        "connection_status": "Connected",
-        "reported_at": "10:30 AM CDT",
-        "last_updated": "2025-07-15T18:30:04.913055887Z"
+        name: "Albert Davis (Demo)",
+        status: "Off Duty",
+        location: "2mi SSE from Tremonton, UT",
+        truck_id: "507889",
+        shift_start: "08:00",
+        break_time: "09:14",
+        drive_time: "03:32",
+        cycle_time: "38:03",
+        connection_status: "",
+        reported_at: "08:54 AM CDT",
+        last_updated: "2025-07-15T17:55:04.913055887Z"
       }
     ];
   }
@@ -117,263 +62,179 @@ async function fetchDriversFromAPI() {
 
 // Routes
 
-// Home page - redirect to login or dashboard
 app.get('/', (req, res) => {
-  if (req.session.user) {
-    res.redirect('/dashboard');
-  } else {
-    res.redirect('/login');
-  }
+  if (req.session.user) res.redirect('/dashboard');
+  else res.redirect('/login');
 });
 
-// Login page
 app.get('/login', (req, res) => {
-  if (req.session.user) {
-    return res.redirect('/dashboard');
-  }
+  if (req.session.user) return res.redirect('/dashboard');
   res.render('login', { error: null });
 });
 
-// Login POST
 app.post('/login', (req, res) => {
   const { username, password } = req.body;
-  const envUsername = process.env.LOGIN_USERNAME;
-  const envPassword = process.env.LOGIN_PASSWORD;
-
-  if (username === envUsername && password === envPassword) {
-    req.session.user = { username, name: 'Administrator' }; // You can customize the name here
+  if (username === process.env.LOGIN_USERNAME && password === process.env.LOGIN_PASSWORD) {
+    req.session.user = { username, name: 'Administrator' };
     res.redirect('/dashboard');
   } else {
     res.render('login', { error: 'Invalid username or password' });
   }
 });
 
-
-// Dashboard page (requires authentication)
 app.get('/dashboard', requireAuth, async (req, res) => {
-  console.log('✅ /dashboard route hit');
   try {
     const drivers = await fetchDriversFromAPI();
-    console.log('✅ Drivers loaded');
-
-    res.render('dashboard', {
-      user: req.session.user,
-      drivers,
-      message: null
-    });
+    res.render('dashboard', { user: req.session.user, drivers, message: null });
   } catch (err) {
-    console.error('❌ Error in /dashboard:', err);
-    res.status(500).send('Dashboard render failed');
+    res.status(500).send('Dashboard load failed');
   }
 });
 
-
-// Generate tracking link
+// Generate link
 app.post('/generate-link', requireAuth, async (req, res) => {
   const { driverName, expirationHours } = req.body;
-  
-
-  if (!driverName || !expirationHours) {
-    return res.status(400).json({ error: 'Driver name and expiration time are required' });
-  }
+  if (!driverName || !expirationHours) return res.status(400).json({ error: 'Missing fields' });
 
   try {
     const drivers = await fetchDriversFromAPI();
     const selectedDriver = drivers.find(d => d.name === driverName);
+    if (!selectedDriver) return res.status(404).json({ error: 'Driver not found' });
 
-    if (!selectedDriver) {
-      return res.status(404).json({ error: 'Driver not found' });
+    // Invalidate old links
+    const existing = await db.collection('trackingLinks')
+      .where('driverName', '==', driverName)
+      .where('active', '==', true)
+      .get();
+
+    for (const doc of existing.docs) {
+      await doc.ref.update({ active: false });
     }
 
-    // Check for existing active link
-    const existingLinkId = driverToLinkId.get(driverName);
-    if (existingLinkId) {
-      // Invalidate old link
-      const oldLink = trackingLinks.get(existingLinkId);
-      if (oldLink) {
-        oldLink.active = false;
-      }
+    const linkId = uuidv4();
+    const expirationTime = new Date(Date.now() + parseInt(expirationHours) * 60 * 60 * 1000);
 
-      // Clean up driver→oldLink mapping
-      driverToLinkId.delete(driverName);
-    }
-
-
-      const linkId = uuidv4();
-      const expirationTime = new Date(Date.now() + parseInt(expirationHours) * 60 * 60 * 1000);
-      trackingLinks.set(linkId, {
-        driverName,
-        createdAt: new Date(),
-        expiresAt: expirationTime,
-        createdBy: req.session.user.username,
-        active: true
-      });
-      driverToLinkId.set(driverName, linkId);
-
+    await db.collection('trackingLinks').doc(linkId).set({
+      driverName,
+      createdAt: new Date(),
+      expiresAt: expirationTime,
+      createdBy: req.session.user.username,
+      active: true
+    });
 
     const trackingUrl = `${req.protocol}://${req.get('host')}/track/${linkId}`;
 
-    res.json({
-      success: true,
-      trackingUrl: trackingUrl,
-      expiresAt: expirationTime.toISOString(),
-      driverName: selectedDriver.name
-    });
+    res.json({ success: true, trackingUrl, expiresAt: expirationTime.toISOString(), driverName });
 
   } catch (error) {
-    console.error('Error generating tracking link:', error);
-    res.status(500).json({ error: 'Failed to generate tracking link' });
+     console.error('❌ Error generating tracking link:', error.stack || error);
+  res.status(500).json({ error: 'Failed to generate tracking link' });
   }
 });
 
-
 // Cancel link
-app.post('/cancel-link', requireAuth, (req, res) => {
+app.post('/cancel-link', requireAuth, async (req, res) => {
   const { driverName } = req.body;
 
-  const linkId = driverToLinkId.get(driverName);
-  if (!linkId || !trackingLinks.has(linkId)) {
-    return res.status(404).json({ error: 'No active tracking link found for this driver' });
+  const snapshot = await db.collection('trackingLinks')
+    .where('driverName', '==', driverName)
+    .where('active', '==', true)
+    .get();
+
+  if (snapshot.empty) return res.status(404).json({ error: 'No active tracking link' });
+
+  for (const doc of snapshot.docs) {
+    await doc.ref.update({ active: false });
   }
 
-  // Mark as inactive instead of deleting immediately
-  const link = trackingLinks.get(linkId);
-  link.active = false;
-
-  // Remove driver mapping so a new link can be generated
-  driverToLinkId.delete(driverName);
-
-  console.log(`Tracking link manually canceled for ${driverName}`);
   res.json({ success: true });
 });
 
-
-
-
-// Public tracking page
+// Tracking view
 app.get('/track/:linkId', async (req, res) => {
   const { linkId } = req.params;
-  const link = trackingLinks.get(linkId);
+  const doc = await db.collection('trackingLinks').doc(linkId).get();
+  if (!doc.exists) return res.status(403).send('Invalid or expired link');
 
-  // Reject if link is missing, inactive, or expired
-  if (!link || !link.active || new Date() > link.expiresAt) {
-    return res.status(403).send('This tracking link is no longer valid, please request new link');
+  const link = doc.data();
+  if (!link.active || new Date() > link.expiresAt.toDate()) {
+    return res.status(403).send('Link expired or inactive');
   }
 
   try {
     const drivers = await fetchDriversFromAPI();
     const driver = drivers.find(d => d.name === link.driverName);
-
     if (!driver) {
-      return res.render('tracking', { 
-        error: 'Driver data not available',
-        driver: null 
-      });
+      return res.render('tracking', { error: 'Driver data missing', driver: null });
     }
 
     const formattedLastUpdated = formatTimestampInCDT(driver.last_updated);
-
-    res.render('tracking', { 
+    res.render('tracking', {
       error: null,
-      driver: driver,
-      formattedLastUpdated: formattedLastUpdated,
-      expiresAt: link.expiresAt
+      driver,
+      formattedLastUpdated,
+      expiresAt: link.expiresAt.toDate()
     });
 
   } catch (error) {
-    console.error('Error fetching driver data for tracking:', error);
-    res.render('tracking', { 
-      error: 'Unable to fetch current driver location',
-      driver: null 
-    });
+    res.render('tracking', { error: 'Unable to fetch driver', driver: null });
   }
 });
 
-
-// API endpoint for refreshing tracking data
+// Tracking API
 app.get('/api/track/:id', async (req, res) => {
-  const linkId = req.params.id;
-  const linkData = trackingLinks.get(linkId);
-  
-  if (!linkData || new Date() > linkData.expiresAt) {
-    return res.status(404).json({ error: 'Invalid or expired tracking link' });
+  const doc = await db.collection('trackingLinks').doc(req.params.id).get();
+  if (!doc.exists) return res.status(404).json({ error: 'Invalid link' });
+
+  const link = doc.data();
+  if (new Date() > link.expiresAt.toDate()) {
+    return res.status(404).json({ error: 'Expired link' });
   }
-  
-  try {
-    const drivers = await fetchDriversFromAPI();
-    const driver = drivers.find(d => d.name === linkData.driverName);
-    
-    if (!driver) {
-      return res.status(404).json({ error: 'Driver not found' });
-    }
-    
-    res.json({
-      driver: driver,
-      expiresAt: linkData.expiresAt
-    });
-    
-  } catch (error) {
-    console.error('Error fetching driver data:', error);
-    res.status(500).json({ error: 'Failed to fetch driver data' });
-  }
+
+  const drivers = await fetchDriversFromAPI();
+  const driver = drivers.find(d => d.name === link.driverName);
+  if (!driver) return res.status(404).json({ error: 'Driver not found' });
+
+  res.json({ driver, expiresAt: link.expiresAt.toDate() });
 });
 
 // Logout
 app.post('/logout', (req, res) => {
-  req.session.destroy((err) => {
-    if (err) {
-      console.error('Error destroying session:', err);
-    }
-    res.redirect('/login');
-  });
+  req.session.destroy(() => res.redirect('/login'));
 });
 
-// Cleanup expired links (run every hour)
-setInterval(() => {
+// Clean up expired links hourly
+setInterval(async () => {
   const now = new Date();
-  for (const [linkId, linkData] of trackingLinks.entries()) {
-    if (now > linkData.expiresAt) {
-      trackingLinks.delete(linkId);
-      driverToLinkId.delete(linkData.driverName);
-      console.log(`Cleaned up expired tracking link: ${linkId} for ${linkData.driverName}`);
-    }
+  const snapshot = await db.collection('trackingLinks')
+    .where('expiresAt', '<', now)
+    .where('active', '==', true)
+    .get();
+
+  for (const doc of snapshot.docs) {
+    await doc.ref.update({ active: false });
+    console.log(`Expired link deactivated: ${doc.id}`);
   }
-}, 60 * 60 * 1000); // every hour
+}, 60 * 60 * 1000);
 
-
-// Error handling
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).send('Something broke!');
 });
 
-// 404 handler
-app.use((req, res) => {
-  res.status(404).send('Page not found');
-});
+app.use((req, res) => res.status(404).send('Page not found'));
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
 
-// helper functions
 function formatTimestampInCDT(isoTimestamp) {
   if (!isoTimestamp) return 'N/A';
-
-  // Normalize nanoseconds to milliseconds precision
   const normalized = isoTimestamp.replace(/\.(\d{3})\d*Z$/, '.$1Z');
   const date = new Date(normalized);
-
-  const options = { 
-    year: 'numeric', month: 'long', day: 'numeric', 
+  return date.toLocaleString('en-US', {
+    year: 'numeric', month: 'long', day: 'numeric',
     hour: '2-digit', minute: '2-digit', second: '2-digit',
-    hour12: true,
-    timeZone: 'America/Chicago',
-    timeZoneName: 'short' 
-  };
-
-  return date.toLocaleString('en-US', options);
+    hour12: true, timeZone: 'America/Chicago', timeZoneName: 'short'
+  });
 }
-
-
-module.exports = app;

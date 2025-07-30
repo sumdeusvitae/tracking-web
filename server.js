@@ -3,6 +3,7 @@ const session = require('express-session');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
+const fetch = require('node-fetch'); // Add if not imported yet
 const db = require('./firebase'); // Firestore
 
 const app = express();
@@ -12,12 +13,14 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
-app.use(session({
-  secret: process.env.SESSION_SECRET || 'your-secret-key-here',
-  resave: false,
-  saveUninitialized: false,
-  cookie: { secure: false, maxAge: 24 * 60 * 60 * 1000 }
-}));
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || 'your-secret-key-here',
+    resave: false,
+    saveUninitialized: false,
+    cookie: { secure: false, maxAge: 24 * 60 * 60 * 1000 }
+  })
+);
 
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
@@ -27,7 +30,7 @@ const requireAuth = (req, res, next) => {
   else res.redirect('/login');
 };
 
-// Fetch drivers from API
+// Fetch drivers from API or fallback mock data
 async function fetchDriversFromAPI() {
   try {
     const response = await fetch('https://server-eld-666563578864.us-south1.run.app/drivers', {
@@ -44,17 +47,17 @@ async function fetchDriversFromAPI() {
     console.error('Driver API failed, returning mock data...');
     return [
       {
-        name: "Albert Davis (Demo)",
-        status: "Off Duty",
-        location: "2mi SSE from Tremonton, UT",
-        truck_id: "507889",
-        shift_start: "08:00",
-        break_time: "09:14",
-        drive_time: "03:32",
-        cycle_time: "38:03",
-        connection_status: "",
-        reported_at: "08:54 AM CDT",
-        last_updated: "2025-07-15T17:55:04.913055887Z"
+        name: 'Albert Davis (Demo)',
+        status: 'Off Duty',
+        location: '2mi SSE from Tremonton, UT',
+        truck_id: '507889',
+        shift_start: '08:00',
+        break_time: '09:14',
+        drive_time: '03:32',
+        cycle_time: '38:03',
+        connection_status: '',
+        reported_at: '08:54 AM CDT',
+        last_updated: '2025-07-15T17:55:04.913055887Z'
       }
     ];
   }
@@ -85,8 +88,34 @@ app.post('/login', (req, res) => {
 app.get('/dashboard', requireAuth, async (req, res) => {
   try {
     const drivers = await fetchDriversFromAPI();
-    res.render('dashboard', { user: req.session.user, drivers, message: null });
+
+    const now = new Date();
+    const linksSnapshot = await db
+      .collection('trackingLinks')
+      .where('expiresAt', '>', now) // only unexpired links
+      .get();
+
+    const activeLinks = {};
+    linksSnapshot.forEach((doc) => {
+      const data = doc.data();
+      const trackingUrl = `${req.protocol}://${req.get('host')}/track/${doc.id}`;
+      activeLinks[data.driverName] = {
+        id: doc.id,
+        expiresAt: data.expiresAt.toDate(),
+        trackingUrl
+      };
+    });
+
+    const driversWithLinks = drivers.map((driver) => {
+      if (activeLinks[driver.name]) {
+        return { ...driver, trackingUrl: activeLinks[driver.name].trackingUrl };
+      }
+      return driver;
+    });
+
+    res.render('dashboard', { user: req.session.user, drivers: driversWithLinks, message: null });
   } catch (err) {
+    console.error('Dashboard load failed:', err);
     res.status(500).send('Dashboard load failed');
   }
 });
@@ -98,17 +127,19 @@ app.post('/generate-link', requireAuth, async (req, res) => {
 
   try {
     const drivers = await fetchDriversFromAPI();
-    const selectedDriver = drivers.find(d => d.name === driverName);
+    const selectedDriver = drivers.find((d) => d.name === driverName);
     if (!selectedDriver) return res.status(404).json({ error: 'Driver not found' });
 
-    // Invalidate old links
-    const existing = await db.collection('trackingLinks')
+    const now = new Date();
+    // Delete any NOT expired links for this driver
+    const existing = await db
+      .collection('trackingLinks')
       .where('driverName', '==', driverName)
-      .where('active', '==', true)
+      .where('expiresAt', '>', now)
       .get();
 
     for (const doc of existing.docs) {
-      await doc.ref.update({ active: false });
+      await doc.ref.delete();
     }
 
     const linkId = uuidv4();
@@ -119,51 +150,58 @@ app.post('/generate-link', requireAuth, async (req, res) => {
       createdAt: new Date(),
       expiresAt: expirationTime,
       createdBy: req.session.user.username,
-      active: true
+      // no active field anymore
     });
 
     const trackingUrl = `${req.protocol}://${req.get('host')}/track/${linkId}`;
 
     res.json({ success: true, trackingUrl, expiresAt: expirationTime.toISOString(), driverName });
-
   } catch (error) {
-     console.error('❌ Error generating tracking link:', error.stack || error);
-  res.status(500).json({ error: 'Failed to generate tracking link' });
+    console.error('❌ Error generating tracking link:', error.stack || error);
+    res.status(500).json({ error: 'Failed to generate tracking link' });
   }
 });
 
-// Cancel link
+// Cancel link route: delete any NOT expired links for this driver
 app.post('/cancel-link', requireAuth, async (req, res) => {
   const { driverName } = req.body;
+  try {
+    const now = new Date();
+    const snapshot = await db
+      .collection('trackingLinks')
+      .where('driverName', '==', driverName)
+      .where('expiresAt', '>', now)
+      .get();
 
-  const snapshot = await db.collection('trackingLinks')
-    .where('driverName', '==', driverName)
-    .where('active', '==', true)
-    .get();
+    if (snapshot.empty) return res.status(404).json({ error: 'No active tracking link' });
 
-  if (snapshot.empty) return res.status(404).json({ error: 'No active tracking link' });
+    for (const doc of snapshot.docs) {
+      await doc.ref.delete();
+    }
 
-  for (const doc of snapshot.docs) {
-    await doc.ref.update({ active: false });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('❌ Error deleting tracking link:', error.stack || error);
+    res.status(500).json({ error: 'Failed to delete tracking link' });
   }
-
-  res.json({ success: true });
 });
+
 
 // Tracking view
 app.get('/track/:linkId', async (req, res) => {
   const { linkId } = req.params;
-  const doc = await db.collection('trackingLinks').doc(linkId).get();
-  if (!doc.exists) return res.status(403).send('Invalid or expired link');
-
-  const link = doc.data();
-  if (!link.active || new Date() > link.expiresAt.toDate()) {
-    return res.status(403).send('Link expired or inactive');
-  }
-
   try {
+    const doc = await db.collection('trackingLinks').doc(linkId).get();
+    if (!doc.exists) return res.status(403).send('Invalid or expired link');
+
+    const link = doc.data();
+    // Remove active check here:
+    if (new Date() > link.expiresAt.toDate()) {
+      return res.status(403).send('Link expired or inactive');
+    }
+
     const drivers = await fetchDriversFromAPI();
-    const driver = drivers.find(d => d.name === link.driverName);
+    const driver = drivers.find((d) => d.name === link.driverName);
     if (!driver) {
       return res.render('tracking', { error: 'Driver data missing', driver: null });
     }
@@ -175,27 +213,32 @@ app.get('/track/:linkId', async (req, res) => {
       formattedLastUpdated,
       expiresAt: link.expiresAt.toDate()
     });
-
   } catch (error) {
+    console.error('❌ Error loading tracking view:', error.stack || error);
     res.render('tracking', { error: 'Unable to fetch driver', driver: null });
   }
 });
 
 // Tracking API
 app.get('/api/track/:id', async (req, res) => {
-  const doc = await db.collection('trackingLinks').doc(req.params.id).get();
-  if (!doc.exists) return res.status(404).json({ error: 'Invalid link' });
+  try {
+    const doc = await db.collection('trackingLinks').doc(req.params.id).get();
+    if (!doc.exists) return res.status(404).json({ error: 'Invalid link' });
 
-  const link = doc.data();
-  if (new Date() > link.expiresAt.toDate()) {
-    return res.status(404).json({ error: 'Expired link' });
+    const link = doc.data();
+    if (new Date() > link.expiresAt.toDate()) {
+      return res.status(404).json({ error: 'Expired link' });
+    }
+
+    const drivers = await fetchDriversFromAPI();
+    const driver = drivers.find((d) => d.name === link.driverName);
+    if (!driver) return res.status(404).json({ error: 'Driver not found' });
+
+    res.json({ driver, expiresAt: link.expiresAt.toDate() });
+  } catch (error) {
+    console.error('❌ Error in tracking API:', error.stack || error);
+    res.status(500).json({ error: 'Internal server error' });
   }
-
-  const drivers = await fetchDriversFromAPI();
-  const driver = drivers.find(d => d.name === link.driverName);
-  if (!driver) return res.status(404).json({ error: 'Driver not found' });
-
-  res.json({ driver, expiresAt: link.expiresAt.toDate() });
 });
 
 // Logout
@@ -203,17 +246,21 @@ app.post('/logout', (req, res) => {
   req.session.destroy(() => res.redirect('/login'));
 });
 
-// Clean up expired links hourly
+// Cleanup expired links (optional but recommended)
 setInterval(async () => {
-  const now = new Date();
-  const snapshot = await db.collection('trackingLinks')
-    .where('expiresAt', '<', now)
-    .where('active', '==', true)
-    .get();
+  try {
+    const now = new Date();
+    const snapshot = await db
+      .collection('trackingLinks')
+      .where('expiresAt', '<=', now)
+      .get();
 
-  for (const doc of snapshot.docs) {
-    await doc.ref.update({ active: false });
-    console.log(`Expired link deactivated: ${doc.id}`);
+    for (const doc of snapshot.docs) {
+      await doc.ref.delete();
+      console.log(`Expired link deleted: ${doc.id}`);
+    }
+  } catch (error) {
+    console.error('Error cleaning up expired links:', error.stack || error);
   }
 }, 60 * 60 * 1000);
 
@@ -233,8 +280,14 @@ function formatTimestampInCDT(isoTimestamp) {
   const normalized = isoTimestamp.replace(/\.(\d{3})\d*Z$/, '.$1Z');
   const date = new Date(normalized);
   return date.toLocaleString('en-US', {
-    year: 'numeric', month: 'long', day: 'numeric',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-    hour12: true, timeZone: 'America/Chicago', timeZoneName: 'short'
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+    timeZone: 'America/Chicago',
+    timeZoneName: 'short'
   });
 }

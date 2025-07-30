@@ -4,7 +4,7 @@ const admin = require('firebase-admin');
 
 admin.initializeApp({
 //   credential: admin.credential.cert(serviceAccount), // for local
-    credential: admin.credential.applicationDefault(),
+    credential: admin.credential.applicationDefault(), // prod
 });
 
 const db = admin.firestore();

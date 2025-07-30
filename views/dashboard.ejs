@@ -20,9 +20,7 @@
           <p class="text-sm text-gray-600">Location: <%= driver.location %></p>
           <% if (driver.trackingUrl) { %>
             <div class="mt-2 text-sm">
-              <p class="break-words text-blue-600 underline">
-                <a href="<%= driver.trackingUrl %>" target="_blank"><%= driver.trackingUrl %></a>
-              </p>
+
               <div class="flex space-x-2 mt-2">
                 <button onclick="copyDriverLink('<%= driver.trackingUrl %>')" class="text-xs bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded">Copy</button>
                 <button onclick="window.open('<%= driver.trackingUrl %>', '_blank')" class="text-xs bg-indigo-500 hover:bg-indigo-600 text-white px-2 py-1 rounded">Open</button>
@@ -113,7 +111,7 @@
         document.getElementById('openButton').onclick = () => window.open(currentTrackingUrl, '_blank');
         document.getElementById('cancelButton').onclick = () => cancelDriverLink(currentDriverName);
 
-        updateDriverBox(data.driverName, data.trackingUrl);
+        updateDriverBox(data.driverName, data.trackingUrl, data.expiresAt);
       } else {
         trackingMessage.innerHTML = `<p class="text-red-700">❌ ${data.error || 'Something went wrong.'}</p>`;
         messageArea.classList.remove('hidden');
@@ -160,16 +158,21 @@
       info.className = 'mt-2 text-sm';
 
       if (trackingUrl) {
+        if (trackingUrl) {
+        const uniqueId = `expires-${driverName.replace(/\s+/g, '-')}`;
+
         info.innerHTML = `
-          <p class="break-words text-blue-600 underline">
-            <a href="${trackingUrl}" target="_blank">${trackingUrl}</a>
-          </p>
-          <div class="flex space-x-2 mt-2">
-            <button onclick="copyDriverLink('${trackingUrl}')" class="text-xs bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded">Copy</button>
-            <button onclick="window.open('${trackingUrl}', '_blank')" class="text-xs bg-indigo-500 hover:bg-indigo-600 text-white px-2 py-1 rounded">Open</button>
-            <button onclick="cancelDriverLink('${driverName}')" class="text-xs bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded">Cancel</button>
-          </div>
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-2 sm:space-y-0 sm:space-x-2 mt-2">
+            <div class="flex space-x-2">
+                <button onclick="copyDriverLink('${trackingUrl}')" class="text-xs bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded">Copy</button>
+                <button onclick="window.open('${trackingUrl}', '_blank')" class="text-xs bg-indigo-500 hover:bg-indigo-600 text-white px-2 py-1 rounded">Open</button>
+                <button onclick="cancelDriverLink('${driverName}')" class="text-xs bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded">Cancel</button>
+            </div>
+            </div>
         `;
+        }
+
+
       } else {
         info.innerHTML = `<p class="text-sm text-gray-500 mt-2 italic">No tracking link</p>`;
       }

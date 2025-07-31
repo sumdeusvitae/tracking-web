@@ -6,18 +6,23 @@
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100 min-h-screen">
+
+
   <div class="flex flex-col md:flex-row max-w-6xl mx-auto p-6 space-y-6 md:space-y-0 md:space-x-6">
+
+
 
     <!-- Left: Driver List -->
     <div class="w-full md:w-1/3 bg-white shadow rounded-lg p-4 overflow-y-auto h-[calc(100vh-4rem)]" id="driverList">
       <h2 class="text-xl font-semibold mb-4">Drivers</h2>
-      
+
       <input id="driverSearch" type="text" placeholder="Search driver..." class="w-full mb-4 p-2 border rounded" oninput="filterDrivers()" />
 
       <% drivers.forEach(driver => { %>
         <div class="border rounded p-3 mb-4 driver-card" data-name="<%= driver.name.toLowerCase() %>" id="driverBox-<%= driver.name.replace(/\s+/g, '-') %>">
           <p class="font-bold mb-1"><%= driver.name %></p>
           <p class="text-sm text-gray-600">Location: <%= driver.location %></p>
+          <p class="text-sm text-gray-600">Last updated: <%= driver.reported_at %></p>
           <% if (driver.trackingUrl) { %>
             <div class="mt-2 text-sm">
 
@@ -36,6 +41,18 @@
 
     <!-- Right: Link Generator -->
     <div class="w-full md:w-2/3 bg-white shadow rounded-lg p-6">
+        <!-- Logout button at top-right of this panel -->
+  <div class="flex justify-end mb-2">
+    <form action="/logout" method="GET">
+      <button
+        type="submit"
+        class="bg-red-500 hover:bg-red-600 text-white text-sm font-medium py-1.5 px-3 rounded"
+      >
+        Logout
+      </button>
+    </form>
+  </div>
+
       <h2 class="text-xl font-semibold mb-4">Generate Tracking Link</h2>
       <form id="generateLinkForm">
         <label class="block mb-4">

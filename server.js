@@ -112,8 +112,19 @@ app.get('/dashboard', requireAuth, async (req, res) => {
       }
       return driver;
     });
+    const driversWithFormattedTimes = driversWithLinks.map(driver => {
+  return {
+    ...driver,
+    formattedLastUpdated: formatTimestampInCDT(driver.reported_at)
+  };
+});
 
-    res.render('dashboard', { user: req.session.user, drivers: driversWithLinks, message: null });
+res.render('dashboard', {
+  user: req.session.user,
+  drivers: driversWithFormattedTimes,
+  message: null
+});
+
   } catch (err) {
     console.error('Dashboard load failed:', err);
     res.status(500).send('Dashboard load failed');
@@ -206,11 +217,9 @@ app.get('/track/:linkId', async (req, res) => {
       return res.render('tracking', { error: 'Driver data missing', driver: null });
     }
 
-    const formattedLastUpdated = formatTimestampInCDT(driver.last_updated);
     res.render('tracking', {
       error: null,
       driver,
-      formattedLastUpdated,
       expiresAt: link.expiresAt.toDate()
     });
   } catch (error) {
@@ -242,9 +251,17 @@ app.get('/api/track/:id', async (req, res) => {
 });
 
 // Logout
-app.post('/logout', (req, res) => {
-  req.session.destroy(() => res.redirect('/login'));
+app.get('/logout', requireAuth, async (req, res) => {
+  req.session.destroy((err) => {
+    if (err) {
+      console.error('Logout error:', err);
+      return res.redirect('/dashboard'); // Or show an error page
+    }
+    res.clearCookie('connect.sid'); // Optional: removes session cookie
+    res.redirect('/login'); // Or wherever your login page is
+  });
 });
+
 
 // Cleanup expired links (optional but recommended)
 setInterval(async () => {

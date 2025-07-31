@@ -19,13 +19,17 @@
       <input id="driverSearch" type="text" placeholder="Search driver..." class="w-full mb-4 p-2 border rounded" oninput="filterDrivers()" />
 
       <% drivers.forEach(driver => { %>
-        <div class="border rounded p-3 mb-4 driver-card" data-name="<%= driver.name.toLowerCase() %>" id="driverBox-<%= driver.name.replace(/\s+/g, '-') %>">
+        <div class="border rounded p-3 mb-4 driver-card cursor-pointer hover:bg-gray-100" 
+     data-name="<%= driver.name.toLowerCase() %>" 
+     data-driver="<%= driver.name %>" 
+     id="driverBox-<%= driver.name.replace(/\s+/g, '-') %>">
+
           <p class="font-bold mb-1"><%= driver.name %></p>
           <p class="text-sm text-gray-600">Location: <%= driver.location %></p>
           <p class="text-sm text-gray-600">Last updated: <%= driver.reported_at %></p>
           <% if (driver.trackingUrl) { %>
 
-            <div class="flex justify-between items-center mt-2">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mt-2 space-y-1 sm:space-y-0 sm:space-x-2">
                <!-- Left: Buttons -->
               <div class="flex space-x-2">
                 <button onclick="copyDriverLink('<%= driver.trackingUrl %>')" class="text-xs bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded">Copy</button>
@@ -34,10 +38,10 @@
               </div>
                <!-- Right: Countdown -->
               <% if (driver.expiresAt) { %>
-  <p class="text-xs text-gray-500 ml-2 whitespace-nowrap" data-expiry="<%= driver.expiresAt.toDate ? driver.expiresAt.toDate().toISOString() : driver.expiresAt %>">
-    Expires in: <span class="countdown">...</span>
-  </p>
-<% } %>
+                <p class="text-xs text-gray-500 sm:text-right" data-expiry="<%= driver.expiresAt.toDate ? driver.expiresAt.toDate().toISOString() : driver.expiresAt %>">
+                  Expires in: <span class="countdown">...</span>
+                </p>
+              <% } %>
 
             </div>
           <% } else { %>
@@ -137,6 +141,7 @@
         document.getElementById('cancelButton').onclick = () => cancelDriverLink(currentDriverName);
 
         updateDriverBox(data.driverName, data.trackingUrl, data.expiresAt);
+        updateCountdowns();
       } else {
         trackingMessage.innerHTML = `<p class="text-red-700">❌ ${data.error || 'Something went wrong.'}</p>`;
         messageArea.classList.remove('hidden');
@@ -171,7 +176,7 @@
       });
     }
 
-    function updateDriverBox(driverName, trackingUrl) {
+    function updateDriverBox(driverName, trackingUrl, expiresAt) {
       const id = 'driverBox-' + driverName.replace(/\s+/g, '-');
       const box = document.getElementById(id);
       if (!box) return;
@@ -183,20 +188,28 @@
       info.className = 'mt-2 text-sm';
 
       if (trackingUrl) {
-        if (trackingUrl) {
+        if(trackingUrl) {
+    
         const uniqueId = `expires-${driverName.replace(/\s+/g, '-')}`;
 
-        info.innerHTML = `
-            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-2 sm:space-y-0 sm:space-x-2 mt-2">
-            <div class="flex space-x-2">
-                <button onclick="copyDriverLink('${trackingUrl}')" class="text-xs bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded">Copy</button>
-                <button onclick="window.open('${trackingUrl}', '_blank')" class="text-xs bg-indigo-500 hover:bg-indigo-600 text-white px-2 py-1 rounded">Open</button>
-                <button onclick="cancelDriverLink('${driverName}')" class="text-xs bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded">Cancel</button>
-            </div>
-            </div>
-        `;
-        }
+        if (trackingUrl) {
+  const iso = expiresAt?.toDate ? expiresAt.toDate().toISOString() : expiresAt;
 
+  info.innerHTML = `
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mt-2 space-y-1 sm:space-y-0 sm:space-x-2">
+      <div class="flex space-x-2">
+        <button onclick="copyDriverLink('${trackingUrl}')" class="text-xs bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded">Copy</button>
+        <button onclick="window.open('${trackingUrl}', '_blank')" class="text-xs bg-indigo-500 hover:bg-indigo-600 text-white px-2 py-1 rounded">Open</button>
+        <button onclick="cancelDriverLink('${driverName}')" class="text-xs bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded">Cancel</button>
+      </div>
+      <div class="text-xs text-gray-500 sm:text-right" data-expiry="${iso}">
+        Expires in: <span class="countdown">...</span>
+      </div>
+    </div>`;
+}
+
+        
+  }
 
       } else {
         info.innerHTML = `<p class="text-sm text-gray-500 mt-2 italic">No tracking link</p>`;
@@ -231,6 +244,24 @@
       el.querySelector('.countdown').textContent = `${hours}h ${minutes}m`;
     });
   }
+  // Handle driver card click to auto-select driver
+document.querySelectorAll('.driver-card').forEach(card => {
+  card.addEventListener('click', (e) => {
+    // Ignore clicks on any buttons inside the card
+    if (e.target.closest('button')) return;
+
+    const driverName = card.getAttribute('data-driver');
+    const driverSelect = document.getElementById('driverName');
+    if (driverSelect) {
+      driverSelect.value = driverName;
+    }
+
+    // Optional: highlight selected driver
+    document.querySelectorAll('.driver-card').forEach(c => c.classList.remove('ring', 'ring-blue-400'));
+    card.classList.add('ring', 'ring-blue-400');
+  });
+});
+
 
   // Initial call and refresh every minute
   updateCountdowns();

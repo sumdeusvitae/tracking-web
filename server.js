@@ -108,7 +108,9 @@ app.get('/dashboard', requireAuth, async (req, res) => {
 
     const driversWithLinks = drivers.map((driver) => {
       if (activeLinks[driver.name]) {
-        return { ...driver, trackingUrl: activeLinks[driver.name].trackingUrl };
+        return { ...driver, 
+        trackingUrl: activeLinks[driver.name].trackingUrl, 
+        expiresAt: activeLinks[driver.name].expiresAt };
       }
       return driver;
     });

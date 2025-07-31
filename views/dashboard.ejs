@@ -24,13 +24,21 @@
           <p class="text-sm text-gray-600">Location: <%= driver.location %></p>
           <p class="text-sm text-gray-600">Last updated: <%= driver.reported_at %></p>
           <% if (driver.trackingUrl) { %>
-            <div class="mt-2 text-sm">
 
-              <div class="flex space-x-2 mt-2">
+            <div class="flex justify-between items-center mt-2">
+               <!-- Left: Buttons -->
+              <div class="flex space-x-2">
                 <button onclick="copyDriverLink('<%= driver.trackingUrl %>')" class="text-xs bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded">Copy</button>
                 <button onclick="window.open('<%= driver.trackingUrl %>', '_blank')" class="text-xs bg-indigo-500 hover:bg-indigo-600 text-white px-2 py-1 rounded">Open</button>
                 <button onclick="cancelDriverLink('<%= driver.name %>')" class="text-xs bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded">Cancel</button>
               </div>
+               <!-- Right: Countdown -->
+              <% if (driver.expiresAt) { %>
+  <p class="text-xs text-gray-500 ml-2 whitespace-nowrap" data-expiry="<%= driver.expiresAt.toDate ? driver.expiresAt.toDate().toISOString() : driver.expiresAt %>">
+    Expires in: <span class="countdown">...</span>
+  </p>
+<% } %>
+
             </div>
           <% } else { %>
             <p class="text-sm text-gray-500 mt-2 italic">No tracking link</p>
@@ -204,6 +212,30 @@
         card.style.display = name.includes(searchValue) ? 'block' : 'none';
       });
     }
+
+    function updateCountdowns() {
+    const now = new Date();
+    document.querySelectorAll('[data-expiry]').forEach(el => {
+      const expiry = new Date(el.getAttribute('data-expiry'));
+      const diffMs = expiry - now;
+
+      if (diffMs <= 0) {
+        el.querySelector('.countdown').textContent = 'Expired';
+        return;
+      }
+
+      const diffMinutes = Math.floor(diffMs / 1000 / 60);
+      const hours = Math.floor(diffMinutes / 60);
+      const minutes = diffMinutes % 60;
+
+      el.querySelector('.countdown').textContent = `${hours}h ${minutes}m`;
+    });
+  }
+
+  // Initial call and refresh every minute
+  updateCountdowns();
+  setInterval(updateCountdowns, 60000);
+
   </script>
 </body>
 </html>

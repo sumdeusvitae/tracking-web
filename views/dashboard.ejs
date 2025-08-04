@@ -5,7 +5,7 @@
   <title>Driver Tracker Dashboard</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Refresh -->
-  <meta http-equiv="refresh" content="300" /> 
+  <!-- <meta http-equiv="refresh" content="300" />  -->
 </head>
 <body class="bg-gray-100 min-h-screen">
 
@@ -113,6 +113,9 @@
   <script>
     let currentTrackingUrl = null;
     let currentDriverName = null;
+    let logoutTimer;
+    let warningTimer;
+
 
     document.getElementById('generateLinkForm').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -263,8 +266,39 @@ document.querySelectorAll('.driver-card').forEach(card => {
     card.classList.add('ring', 'ring-blue-400');
   });
 });
+// reset timer
+function resetTimer() {
+    clearTimeout(logoutTimer);
+    logoutTimer = setTimeout(() => {
+      window.location.href = '/logout';
+    }, 15 * 60 * 1000); // 15 minutes
+  }
+
+  ['click', 'mousemove', 'keydown', 'scroll'].forEach(event =>
+    document.addEventListener(event, resetTimer)
+  );
+
+// warning timer
+function showWarning() {
+  if (confirm("You've been inactive. Stay logged in?")) {
+    resetTimer();
+  } else {
+    window.location.href = '/logout';
+  }
+}
+
+function resetTimer() {
+  clearTimeout(logoutTimer);
+  clearTimeout(warningTimer);
+
+  warningTimer = setTimeout(showWarning, 14 * 60 * 1000); // 1 minute before auto-logout
+  logoutTimer = setTimeout(() => {
+    window.location.href = '/logout';
+  }, 15 * 60 * 1000);
+}
 
 
+  resetTimer();
   // Initial call and refresh every minute
   updateCountdowns();
   setInterval(updateCountdowns, 60000);

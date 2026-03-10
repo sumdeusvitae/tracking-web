@@ -22,37 +22,49 @@
 
   <div class="flex flex-col md:flex-row max-w-6xl mx-auto p-6 space-y-6 md:space-y-0 md:space-x-6">
 
-    <div class="w-full md:w-1/3 bg-white dark:bg-gray-800 shadow rounded-lg p-4 overflow-y-auto h-[calc(100vh-4rem)] border dark:border-gray-700" id="driverList">
-      <h2 class="text-xl font-semibold mb-4 dark:text-white">Drivers</h2>
+    <div class="w-full md:w-1/3 bg-white dark:bg-gray-800 shadow rounded-lg p-4 overflow-y-auto h-[calc(100vh-4rem)] border dark:border-gray-700 relative" id="driverList">
+      
+      <div class="sticky top-0 z-10 bg-white dark:bg-gray-800 pb-4 border-b dark:border-gray-700 mb-4">
+        <h2 class="text-xl font-semibold mb-3 dark:text-white">Drivers</h2>
+        <input 
+          id="driverSearch" 
+          type="text" 
+          placeholder="Search driver name..." 
+          class="w-full p-2 text-sm border dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded shadow-sm focus:ring-2 focus:ring-blue-400 outline-none transition-all" 
+          oninput="filterDrivers()" 
+        />
+      </div>
 
-      <% drivers.forEach(driver => { %>
-        <div class="border dark:border-gray-700 rounded p-3 mb-4 driver-card cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors" 
-             data-name="<%= driver.name.toLowerCase() %>" 
-             data-driver="<%= driver.name %>" 
-             id="driverBox-<%= driver.name.replace(/\s+/g, '-') %>">
+      <div id="driversContainer">
+        <% drivers.forEach(driver => { %>
+          <div class="border dark:border-gray-700 rounded p-3 mb-4 driver-card cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors" 
+               data-name="<%= driver.name.toLowerCase() %>" 
+               data-driver="<%= driver.name %>" 
+               id="driverBox-<%= driver.name.replace(/\s+/g, '-') %>">
 
-          <p class="font-bold mb-1 dark:text-white"><%= driver.name %></p>
-          <p class="text-sm text-gray-600 dark:text-gray-400">Location: <%= driver.location %></p>
-          <p class="text-sm text-gray-600 dark:text-gray-400">Last updated: <%= driver.reported_at %></p>
-          
-          <% if (driver.trackingUrl) { %>
-            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mt-2 space-y-1 sm:space-y-0 sm:space-x-2">
-              <div class="flex space-x-2">
-                <button onclick="copyDriverLink('<%= driver.trackingUrl %>')" class="text-xs bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded">Copy</button>
-                <button onclick="window.open('<%= driver.trackingUrl %>', '_blank')" class="text-xs bg-indigo-500 hover:bg-indigo-600 text-white px-2 py-1 rounded">Open</button>
-                <button onclick="cancelDriverLink('<%= driver.name %>')" class="text-xs bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded">Cancel</button>
+            <p class="font-bold mb-1 dark:text-white"><%= driver.name %></p>
+            <p class="text-sm text-gray-600 dark:text-gray-400">Location: <%= driver.location %></p>
+            <p class="text-sm text-gray-600 dark:text-gray-400">Last updated: <%= driver.reported_at %></p>
+            
+            <% if (driver.trackingUrl) { %>
+              <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mt-2 space-y-1 sm:space-y-0 sm:space-x-2">
+                <div class="flex space-x-2">
+                  <button onclick="copyDriverLink('<%= driver.trackingUrl %>')" class="text-xs bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded">Copy</button>
+                  <button onclick="window.open('<%= driver.trackingUrl %>', '_blank')" class="text-xs bg-indigo-500 hover:bg-indigo-600 text-white px-2 py-1 rounded">Open</button>
+                  <button onclick="cancelDriverLink('<%= driver.name %>')" class="text-xs bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded">Cancel</button>
+                </div>
+                <% if (driver.expiresAt) { %>
+                  <p class="text-xs text-gray-500 dark:text-gray-400 sm:text-right" data-expiry="<%= driver.expiresAt.toDate ? driver.expiresAt.toDate().toISOString() : driver.expiresAt %>">
+                    Expires in: <span class="countdown font-mono">...</span>
+                  </p>
+                <% } %>
               </div>
-              <% if (driver.expiresAt) { %>
-                <p class="text-xs text-gray-500 dark:text-gray-400 sm:text-right" data-expiry="<%= driver.expiresAt.toDate ? driver.expiresAt.toDate().toISOString() : driver.expiresAt %>">
-                  Expires in: <span class="countdown font-mono">...</span>
-                </p>
-              <% } %>
-            </div>
-          <% } else { %>
-            <p class="text-sm text-gray-400 dark:text-gray-500 mt-2 italic">No tracking link</p>
-          <% } %>
-        </div>
-      <% }) %>
+            <% } else { %>
+              <p class="text-sm text-gray-400 dark:text-gray-500 mt-2 italic">No tracking link</p>
+            <% } %>
+          </div>
+        <% }) %>
+      </div>
     </div>
 
     <div class="w-full md:w-2/3 bg-white dark:bg-gray-800 shadow rounded-lg p-6 border dark:border-gray-700">
@@ -60,30 +72,17 @@
       <div class="flex justify-between items-start mb-6">
         <h2 class="text-xl font-semibold dark:text-white">Generate Tracking Link</h2>
         
-        <div class="flex flex-col items-end space-y-3">
-          <div class="flex space-x-2">
-            <button onclick="toggleTheme()" class="p-1.5 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors" title="Toggle Dark Mode">
-              <span class="dark:hidden">🌙</span>
-              <span class="hidden dark:inline">☀️</span>
+        <div class="flex space-x-2">
+          <button onclick="toggleTheme()" class="p-1.5 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors" title="Toggle Dark Mode">
+            <span class="dark:hidden">🌙</span>
+            <span class="hidden dark:inline">☀️</span>
+          </button>
+          
+          <form action="/logout" method="GET">
+            <button type="submit" class="bg-red-500 hover:bg-red-600 text-white text-xs font-medium py-1.5 px-3 rounded transition-colors">
+              Logout
             </button>
-            
-            <form action="/logout" method="GET">
-              <button type="submit" class="bg-red-500 hover:bg-red-600 text-white text-xs font-medium py-1.5 px-3 rounded transition-colors">
-                Logout
-              </button>
-            </form>
-          </div>
-
-          <div class="w-64">
-            <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Search Drivers</label>
-            <input 
-              id="driverSearch" 
-              type="text" 
-              placeholder="Type name..." 
-              class="w-full p-2 text-sm border dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded shadow-sm focus:ring-2 focus:ring-blue-400 outline-none transition-all" 
-              oninput="filterDrivers()" 
-            />
-          </div>
+          </form>
         </div>
       </div>
 
@@ -136,13 +135,11 @@
     let logoutTimer;
     let warningTimer;
 
-    // --- Theme Toggle Logic ---
     function toggleTheme() {
       const isDark = document.documentElement.classList.toggle('dark');
       localStorage.theme = isDark ? 'dark' : 'light';
     }
 
-    // --- Existing Functionality ---
     document.getElementById('generateLinkForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const driverName = document.getElementById('driverName').value;
@@ -263,7 +260,6 @@
       });
     }
 
-    // Card Click to Select
     document.querySelectorAll('.driver-card').forEach(card => {
       card.addEventListener('click', (e) => {
         if (e.target.closest('button')) return;
@@ -276,7 +272,6 @@
       });
     });
 
-    // --- Session Timer Logic ---
     function showWarning() {
       if (confirm("You've been inactive. Stay logged in?")) {
         resetTimer();
@@ -288,18 +283,14 @@
     function resetTimer() {
       clearTimeout(logoutTimer);
       clearTimeout(warningTimer);
-
-      warningTimer = setTimeout(showWarning, 14 * 60 * 1000); // 14 mins warning
-      logoutTimer = setTimeout(() => {
-        window.location.href = '/logout';
-      }, 15 * 60 * 1000); // 15 mins logout
+      warningTimer = setTimeout(showWarning, 14 * 60 * 1000);
+      logoutTimer = setTimeout(() => { window.location.href = '/logout'; }, 15 * 60 * 1000);
     }
 
     ['click', 'mousemove', 'keydown', 'scroll'].forEach(event =>
       document.addEventListener(event, resetTimer)
     );
 
-    // Initializations
     resetTimer();
     updateCountdowns();
     setInterval(updateCountdowns, 60000);
